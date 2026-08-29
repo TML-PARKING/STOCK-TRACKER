@@ -252,7 +252,7 @@ document.querySelectorAll('.tab').forEach(tab=>{
     document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById('view-'+tab.dataset.view).classList.add('active');
-    if(tab.dataset.view==='search') renderPaletteList();
+    if(tab.dataset.view==='search'){ refreshData(); }
     if(tab.dataset.view==='emplacements') renderEmpList();
   });
 });
@@ -391,16 +391,11 @@ document.getElementById('search-input').addEventListener('keyup', (e)=>{
 async function doSearch(code){
   code = code.trim();
   if(!code) return;
-  showResult('search-result','info','Recherche...');
-  try{
-    const p = await apiGet('search', {code});
-    if(p){
-      showResult('search-result','ok', `Palette <b>${p.code}</b><br>Emplacement : <b>${p.emplacement}</b><br>Mis à jour : ${new Date(p.updated).toLocaleString('fr-BE')}`);
-    } else {
-      showResult('search-result','err', `Palette "${code}" introuvable.`);
-    }
-  }catch(e){
-    showResult('search-result','err','Erreur réseau.');
+  const p = cache.palettes.find(x => String(x.code).trim() === code);
+  if(p){
+    showResult('search-result','ok', `Palette <b>${p.code}</b><br>Emplacement : <b>${p.emplacement}</b><br>Mis à jour : ${new Date(p.updated).toLocaleString('fr-BE')}`);
+  } else {
+    showResult('search-result','err', `Palette "${code}" introuvable.`);
   }
 }
 document.getElementById('btn-refresh-palettes').addEventListener('click', refreshData);
