@@ -202,6 +202,7 @@
     </div>
     <div class="card">
       <h2>Zone danger</h2>
+      <button class="secondary" id="btn-dedupe" style="margin-bottom:8px;">🧹 Nettoyer les doublons palettes</button>
       <button class="danger" id="btn-reset">🗑️ Tout effacer (Sheet inclus)</button>
     </div>
   </div>
@@ -353,11 +354,15 @@ document.getElementById('btn-scan-palette').addEventListener('click', ()=>{
 document.getElementById('btn-set-palette-manual').addEventListener('click', ()=>{
   assignPalette(document.getElementById('manual-palette').value);
 });
+function normalizeCode(v){
+  return String(v || '').replace(/[\u200B-\u200D\uFEFF\u00A0]/g,'').trim().toUpperCase();
+}
+
 async function assignPalette(code){
-  code = code.trim();
+  code = normalizeCode(code);
   if(!code || !activeEmp) return;
 
-  const existing = cache.palettes.find(p => String(p.code).trim() === code);
+  const existing = cache.palettes.find(p => normalizeCode(p.code) === code);
   if(existing && existing.emplacement !== activeEmp){
     const confirmed = confirm(
       `⚠️ La palette "${code}" est déjà enregistrée à l'emplacement "${existing.emplacement}".\n\n` +
@@ -394,9 +399,9 @@ document.getElementById('search-input').addEventListener('keyup', (e)=>{
   if(e.key==='Enter') doSearch(e.target.value);
 });
 async function doSearch(code){
-  code = code.trim();
+  code = normalizeCode(code);
   if(!code) return;
-  const p = cache.palettes.find(x => String(x.code).trim() === code);
+  const p = cache.palettes.find(x => normalizeCode(x.code) === code);
   if(p){
     showResult('search-result','ok', `Palette <b>${p.code}</b><br>Emplacement : <b>${p.emplacement}</b><br>Mis à jour : ${new Date(p.updated).toLocaleString('fr-BE')}`);
   } else {
@@ -582,6 +587,22 @@ document.getElementById('btn-export').addEventListener('click', ()=>{
 });
 
 // ---------- Reset ----------
+document.getElementById('btn-dedupe').addEventListener('click', async ()=>{
+  const btn = document.getElementById('btn-dedupe');
+  btn.disabled = true;
+  btn.textContent = 'Nettoyage...';
+  try{
+    const res = await apiGet('dedupePalettes');
+    alert(`${res.removed} doublon(s) supprimé(s).`);
+    refreshData();
+  }catch(e){
+    alert('Erreur lors du nettoyage.');
+  }finally{
+    btn.disabled = false;
+    btn.textContent = '🧹 Nettoyer les doublons palettes';
+  }
+});
+
 document.getElementById('btn-reset').addEventListener('click', async ()=>{
   if(confirm('Effacer toutes les données du Google Sheet ? Irréversible.')){
     await apiGet('reset');
