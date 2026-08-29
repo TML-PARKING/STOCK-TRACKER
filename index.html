@@ -60,6 +60,8 @@
   }
   label{font-size:12px; color:var(--muted); display:block; margin-bottom:4px;}
   #reader, #search-reader{width:100%; border-radius:10px; overflow:hidden; margin-bottom:10px;}
+  #reader video, #search-reader video{width:100% !important; height:auto !important; max-height:60vh; object-fit:cover; border-radius:10px;}
+  #reader img, #search-reader img{max-width:100%;}
   .result{
     padding:12px; border-radius:8px; margin-top:10px; font-size:14px; line-height:1.5;
   }
@@ -263,6 +265,7 @@ function showResult(elId, type, msg){
 function startScanner(readerId, onSuccess){
   const el = document.getElementById(readerId);
   el.style.display = 'block';
+  el.scrollIntoView({ behavior:'smooth', block:'center' });
   if(scanner){ scanner.stop().catch(()=>{}); scanner.clear(); scanner=null; }
   scanner = new Html5Qrcode(readerId);
   scanner.start(
@@ -270,7 +273,9 @@ function startScanner(readerId, onSuccess){
     { fps: 10, qrbox: 220 },
     (decodedText)=>{ onSuccess(decodedText); stopScanner(readerId); },
     ()=>{}
-  ).catch(err=>{ showResult('scan-result','err','Erreur caméra : '+err); });
+  ).then(()=>{
+    setTimeout(()=> el.scrollIntoView({ behavior:'smooth', block:'center' }), 300);
+  }).catch(err=>{ showResult('scan-result','err','Erreur caméra : '+err); });
 }
 function stopScanner(readerId){
   if(scanner){
@@ -312,7 +317,7 @@ async function assignPalette(code){
   code = code.trim();
   if(!code || !activeEmp) return;
 
-  const existing = cache.palettes.find(p => p.code === code);
+  const existing = cache.palettes.find(p => String(p.code).trim() === code);
   if(existing && existing.emplacement !== activeEmp){
     const confirmed = confirm(
       `⚠️ La palette "${code}" est déjà enregistrée à l'emplacement "${existing.emplacement}".\n\n` +
