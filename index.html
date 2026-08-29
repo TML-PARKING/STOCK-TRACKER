@@ -228,8 +228,9 @@ function setConnDot(state){
 async function apiGet(action, params={}){
   const url = new URL(API_URL);
   url.searchParams.set('action', action);
+  url.searchParams.set('_ts', Date.now()); // anti-cache
   Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: 'no-store' });
   return res.json();
 }
 
@@ -424,8 +425,15 @@ function renderPaletteList(){
   `).join('') || '<small class="hint">Aucune palette.</small>';
 }
 async function deletePalette(code){
-  await apiGet('deletePalette', {code});
-  refreshData();
+  try{
+    const res = await apiGet('deletePalette', {code});
+    if(!res.ok || res.removed === 0){
+      alert('⚠️ Aucune ligne supprimée côté serveur pour ce code. Vérifie que le script Apps Script déployé est bien la dernière version.');
+    }
+    refreshData();
+  }catch(e){
+    alert('Erreur réseau lors de la suppression.');
+  }
 }
 
 // ---------- Emplacements ----------
@@ -472,8 +480,15 @@ document.getElementById('btn-select-none').addEventListener('click', ()=>{
   renderEmpList();
 });
 async function deleteEmp(code){
-  await apiGet('deleteEmplacement', {code});
-  refreshData();
+  try{
+    const res = await apiGet('deleteEmplacement', {code});
+    if(!res.ok || res.removed === 0){
+      alert('⚠️ Aucune ligne supprimée côté serveur pour ce code. Vérifie que le script Apps Script déployé est bien la dernière version.');
+    }
+    refreshData();
+  }catch(e){
+    alert('Erreur réseau lors de la suppression.');
+  }
 }
 
 // ---------- Bulk range creation ----------
@@ -593,10 +608,14 @@ document.getElementById('btn-dedupe').addEventListener('click', async ()=>{
   btn.textContent = 'Nettoyage...';
   try{
     const res = await apiGet('dedupePalettes');
-    alert(`${res.removed} doublon(s) supprimé(s).`);
+    if(res.ok){
+      alert(`${res.removed} doublon(s) supprimé(s).`);
+    } else {
+      alert('Erreur serveur : ' + (res.error || 'inconnue'));
+    }
     refreshData();
   }catch(e){
-    alert('Erreur lors du nettoyage.');
+    alert('Erreur réseau lors du nettoyage.');
   }finally{
     btn.disabled = false;
     btn.textContent = '🧹 Nettoyer les doublons palettes';
