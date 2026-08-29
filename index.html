@@ -262,28 +262,60 @@ function showResult(elId, type, msg){
 }
 
 // ---------- Scanning ----------
-function startScanner(readerId, onSuccess){
+let scannerBusy = false;
+
+async function startScanner(readerId, onSuccess){
+  if(scannerBusy) return;
+  scannerBusy = true;
   const el = document.getElementById(readerId);
+
+  // Arrête et libère proprement toute instance précédente avant d'en recréer une
+  if(scanner){
+    try{ await scanner.stop(); }catch(e){}
+    try{ scanner.clear(); }catch(e){}
+    scanner = null;
+  }
+  el.innerHTML = '';
   el.style.display = 'block';
   el.scrollIntoView({ behavior:'smooth', block:'center' });
-  if(scanner){ scanner.stop().catch(()=>{}); scanner.clear(); scanner=null; }
-  scanner = new Html5Qrcode(readerId);
-  scanner.start(
-    { facingMode: "environment" },
-    { fps: 10, qrbox: 220 },
-    (decodedText)=>{ onSuccess(decodedText); stopScanner(readerId); },
-    ()=>{}
-  ).then(()=>{
+
+  scanner = new Html5Qrcode(readerId, {
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.ITF,
+      Html5QrcodeSupportedFormats.QR_CODE
+    ]
+  });
+
+  try{
+    await scanner.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: 220 },
+      (decodedText)=>{ onSuccess(decodedText); stopScanner(readerId); },
+      ()=>{}
+    );
     setTimeout(()=> el.scrollIntoView({ behavior:'smooth', block:'center' }), 300);
-  }).catch(err=>{ showResult('scan-result','err','Erreur caméra : '+err); });
+  }catch(err){
+    showResult('scan-result','err','Erreur caméra : '+err);
+  }finally{
+    scannerBusy = false;
+  }
 }
 function stopScanner(readerId){
   if(scanner){
-    scanner.stop().then(()=>{
-      scanner.clear();
+    const s = scanner;
+    scanner = null;
+    s.stop().then(()=>{
+      try{ s.clear(); }catch(e){}
       document.getElementById(readerId).style.display='none';
-      scanner=null;
-    }).catch(()=>{});
+    }).catch(()=>{
+      document.getElementById(readerId).style.display='none';
+    });
   }
 }
 
@@ -308,7 +340,10 @@ document.getElementById('btn-set-emp-manual').addEventListener('click', ()=>{
 // ---------- Step 2: palette ----------
 document.getElementById('btn-scan-palette').addEventListener('click', ()=>{
   if(!activeEmp) return;
-  startScanner('reader', (text)=> assignPalette(text));
+  startScanner('reader', (text)=>{
+    document.getElementById('manual-palette').value = text;
+    showResult('scan-result','info', `Code lu : <b>${text}</b><br>Vérifie puis clique sur "Associer" (corrige si mal lu).`);
+  });
 });
 document.getElementById('btn-set-palette-manual').addEventListener('click', ()=>{
   assignPalette(document.getElementById('manual-palette').value);
