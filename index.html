@@ -408,13 +408,13 @@ document.getElementById('filter-palettes').addEventListener('input', renderPalet
 function renderPaletteList(){
   const filter = (document.getElementById('filter-palettes').value||'').toLowerCase();
   const list = cache.palettes.filter(p =>
-    p.code.toLowerCase().includes(filter) || (p.emplacement||'').toLowerCase().includes(filter)
-  ).sort((a,b)=> (b.updated||'').localeCompare(a.updated||''));
+    String(p.code||'').toLowerCase().includes(filter) || String(p.emplacement||'').toLowerCase().includes(filter)
+  ).sort((a,b)=> String(b.updated||'').localeCompare(String(a.updated||'')));
   document.getElementById('count-palettes').textContent = cache.palettes.length;
   document.getElementById('palette-list').innerHTML = list.map(p => `
     <div class="list-item">
       <div><b>${p.code}</b><div class="meta">→ ${p.emplacement}</div></div>
-      <button class="secondary" onclick="deletePalette('${p.code.replace(/'/g,"\\'")}')">✕</button>
+      <button class="secondary" onclick="deletePalette('${String(p.code).replace(/'/g,"\\'")}')">✕</button>
     </div>
   `).join('') || '<small class="hint">Aucune palette.</small>';
 }
