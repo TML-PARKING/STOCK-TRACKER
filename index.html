@@ -294,7 +294,7 @@ async function startScanner(readerId, onSuccess){
 
   try{
     await scanner.start(
-      { facingMode: "environment", advanced: [{ focusMode: "continuous" }] },
+      { facingMode: "environment" },
       {
         fps: 20,
         qrbox: { width: 280, height: 160 }, // zone plus large, adaptée aux codes-barres (rectangulaires)
