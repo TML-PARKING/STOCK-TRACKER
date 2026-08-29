@@ -363,6 +363,7 @@ async function assignPalette(code){
   code = normalizeCode(code);
   if(!code || !activeEmp) return;
 
+  // 1. Cette palette est-elle déjà ailleurs ?
   const existing = cache.palettes.find(p => normalizeCode(p.code) === code);
   if(existing && existing.emplacement !== activeEmp){
     const confirmed = confirm(
@@ -376,6 +377,25 @@ async function assignPalette(code){
   } else if(existing && existing.emplacement === activeEmp){
     showResult('scan-result','info', `Palette déjà enregistrée à cet emplacement.`);
     return;
+  }
+
+  // 2. L'emplacement cible est-il déjà occupé par une AUTRE palette ?
+  const occupant = cache.palettes.find(p => p.emplacement === activeEmp && normalizeCode(p.code) !== code);
+  if(occupant){
+    const confirmed = confirm(
+      `⚠️ L'emplacement "${activeEmp}" contient déjà la palette "${occupant.code}".\n\n` +
+      `La remplacer par "${code}" ? (la palette "${occupant.code}" sera marquée sans emplacement)`
+    );
+    if(!confirmed){
+      showResult('scan-result','info', `Association annulée. Emplacement toujours occupé par "${occupant.code}".`);
+      return;
+    }
+    try{
+      await apiGet('clearEmplacement', {code: occupant.code});
+    }catch(e){
+      showResult('scan-result','err','Erreur lors de la libération de l\'ancien occupant.');
+      return;
+    }
   }
 
   showResult('scan-result','info', 'Enregistrement...');
