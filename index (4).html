@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suivi Stock Palettes</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --border:#2a2f3a;
+    --text:#e8eaed; --muted:#8a90a0; --accent:#4f8cff; --accent2:#2fbf71;
+    --danger:#ff5470; --warn:#ffb454;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    background:var(--bg); color:var(--text); padding-bottom:80px;
+  }
+  header{
+    padding:16px 16px 8px; position:sticky; top:0; background:var(--bg);
+    z-index:10; border-bottom:1px solid var(--border);
+  }
+  h1{font-size:18px; margin:0 0 12px; display:flex; align-items:center; gap:8px;}
+  #conn-dot{width:9px;height:9px;border-radius:50%;background:var(--warn);display:inline-block;}
+  #conn-dot.ok{background:var(--accent2);}
+  #conn-dot.err{background:var(--danger);}
+  .tabs{display:flex; gap:6px; overflow-x:auto;}
+  .tab{
+    flex:1; text-align:center; padding:10px 6px; border-radius:8px;
+    background:var(--panel); color:var(--muted); font-size:13px; cursor:pointer;
+    border:1px solid var(--border); white-space:nowrap;
+  }
+  .tab.active{background:var(--accent); color:#fff; border-color:var(--accent);}
+  main{padding:16px; max-width:600px; margin:0 auto;}
+  .view{display:none;}
+  .view.active{display:block;}
+  .card{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    padding:16px; margin-bottom:14px;
+  }
+  .card h2{font-size:15px; margin:0 0 10px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.03em;}
+  .status-line{
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--panel2); border-radius:8px; padding:10px 12px; margin-bottom:10px;
+    font-size:14px;
+  }
+  .status-line b{color:var(--accent2);}
+  button{
+    background:var(--accent); color:#fff; border:none; border-radius:8px;
+    padding:12px 16px; font-size:14px; cursor:pointer; width:100%; font-weight:600;
+  }
+  button.secondary{background:var(--panel2); color:var(--text); border:1px solid var(--border);}
+  button.danger{background:var(--danger);}
+  button:disabled{opacity:.5; cursor:not-allowed;}
+  input, select{
+    width:100%; padding:11px 12px; border-radius:8px; border:1px solid var(--border);
+    background:var(--panel2); color:var(--text); font-size:14px; margin-bottom:8px;
+  }
+  label{font-size:12px; color:var(--muted); display:block; margin-bottom:4px;}
+  #reader, #search-reader{width:100%; border-radius:10px; overflow:hidden; margin-bottom:10px;}
+  .result{
+    padding:12px; border-radius:8px; margin-top:10px; font-size:14px; line-height:1.5;
+  }
+  .result.ok{background:rgba(47,191,113,.12); border:1px solid var(--accent2); color:var(--accent2);}
+  .result.err{background:rgba(255,84,112,.12); border:1px solid var(--danger); color:var(--danger);}
+  .result.info{background:rgba(79,140,255,.12); border:1px solid var(--accent); color:var(--accent);}
+  .list-item{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 12px; background:var(--panel2); border-radius:8px; margin-bottom:6px;
+    font-size:13px;
+  }
+  .list-item .meta{color:var(--muted); font-size:11px;}
+  .list-item button{width:auto; padding:6px 10px; font-size:12px;}
+  .qr-grid{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:10px;
+  }
+  .qr-cell{
+    background:#fff; color:#000; border-radius:6px; padding:8px; text-align:center;
+  }
+  .qr-cell div{font-size:11px; font-weight:700; margin-top:4px;}
+  small.hint{color:var(--muted); display:block; margin-top:6px; font-size:12px;}
+  #setup-banner{
+    background:rgba(255,180,84,.12); border:1px solid var(--warn); color:var(--warn);
+    padding:12px; border-radius:8px; margin:0 16px 12px; font-size:13px; line-height:1.5;
+  }
+  @media print{
+    header, .tabs, main > .card:not(.print-only), button{display:none !important;}
+    .print-only{display:block !important;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span id="conn-dot"></span> Suivi Stock Palettes</h1>
+  <div class="tabs">
+    <div class="tab active" data-view="scan">Scanner</div>
+    <div class="tab" data-view="search">Rechercher</div>
+    <div class="tab" data-view="emplacements">Emplacements</div>
+    <div class="tab" data-view="data">Données</div>
+  </div>
+</header>
+
+<div id="setup-banner" style="display:none;">
+  ⚠️ Configure l'URL de ton API Google Apps Script dans le code (variable <code>API_URL</code> en bas du fichier) avant utilisation.
+</div>
+
+<main>
+
+  <!-- SCAN VIEW -->
+  <div class="view active" id="view-scan">
+    <div class="card">
+      <h2>Étape 1 — Emplacement</h2>
+      <div class="status-line">
+        <span>Emplacement actif :</span>
+        <b id="active-emp">Aucun</b>
+      </div>
+      <button id="btn-scan-emp">📷 Scanner un QR emplacement</button>
+      <small class="hint">Ou saisis le code manuellement :</small>
+      <input id="manual-emp" placeholder="ex: A-01-02">
+      <button class="secondary" id="btn-set-emp-manual">Valider emplacement</button>
+    </div>
+
+    <div class="card">
+      <h2>Étape 2 — Palette</h2>
+      <button id="btn-scan-palette" disabled>📷 Scanner code-barre palette</button>
+      <small class="hint">Ou saisis le code manuellement :</small>
+      <input id="manual-palette" placeholder="Code-barre palette" disabled>
+      <button class="secondary" id="btn-set-palette-manual" disabled>Associer à l'emplacement</button>
+      <div id="reader" style="display:none;"></div>
+      <div id="scan-result"></div>
+    </div>
+  </div>
+
+  <!-- SEARCH VIEW -->
+  <div class="view" id="view-search">
+    <div class="card">
+      <h2>Rechercher une palette</h2>
+      <input id="search-input" placeholder="Scanner ou taper le code-barre">
+      <button id="btn-search-scan">📷 Scanner pour rechercher</button>
+      <div id="search-reader" style="display:none;"></div>
+      <div id="search-result"></div>
+    </div>
+    <div class="card">
+      <h2>Toutes les palettes (<span id="count-palettes">0</span>)</h2>
+      <input id="filter-palettes" placeholder="Filtrer...">
+      <button class="secondary" id="btn-refresh-palettes" style="margin-bottom:8px;">🔄 Rafraîchir</button>
+      <div id="palette-list"></div>
+    </div>
+  </div>
+
+  <!-- EMPLACEMENTS VIEW -->
+  <div class="view" id="view-emplacements">
+    <div class="card">
+      <h2>Créer un emplacement</h2>
+      <input id="new-emp-code" placeholder="Code emplacement, ex: A-01-02">
+      <button id="btn-add-emp">Ajouter</button>
+    </div>
+
+    <div class="card">
+      <h2>Création en masse (plage)</h2>
+      <div class="row">
+        <div>
+          <label>Premier code</label>
+          <input id="bulk-first" placeholder="ex: A-01-01">
+        </div>
+        <div>
+          <label>Dernier code</label>
+          <input id="bulk-last" placeholder="ex: A-01-50">
+        </div>
+      </div>
+      <button class="secondary" id="btn-bulk-preview">Prévisualiser</button>
+      <div id="bulk-preview"></div>
+      <button id="btn-bulk-create" style="display:none; margin-top:8px;">Créer tous les emplacements</button>
+      <small class="hint">Le nombre qui change entre le premier et le dernier code est détecté automatiquement (ex: A-01-01 → A-01-50 génère 50 emplacements). Le reste du code doit être identique.</small>
+    </div>
+    <div class="card">
+      <h2>Emplacements (<span id="count-emps">0</span>)</h2>
+      <div class="row" style="margin-bottom:8px;">
+        <button class="secondary" id="btn-select-all">Tout sélectionner</button>
+        <button class="secondary" id="btn-select-none">Tout désélectionner</button>
+      </div>
+      <div id="emp-list"></div>
+    </div>
+    <div class="card">
+      <h2>QR codes — export PDF</h2>
+      <small class="hint">Coche les emplacements ci-dessus, puis télécharge le PDF (1 QR code par page, prêt à imprimer).</small>
+      <button id="btn-download-pdf" style="margin-top:10px;">⬇️ Télécharger PDF (<span id="selected-count">0</span> sélectionné(s))</button>
+    </div>
+  </div>
+
+  <!-- DATA VIEW -->
+  <div class="view" id="view-data">
+    <div class="card">
+      <h2>Export</h2>
+      <button id="btn-export">⬇️ Exporter (CSV)</button>
+      <small class="hint">Les données vivent dans ton Google Sheet — tu peux aussi les consulter/éditer directement dedans à tout moment.</small>
+    </div>
+    <div class="card">
+      <h2>Zone danger</h2>
+      <button class="danger" id="btn-reset">🗑️ Tout effacer (Sheet inclus)</button>
+    </div>
+  </div>
+
+</main>
+
+<div class="print-only" id="print-area" style="display:none;"></div>
+
+<script>
+// ======= CONFIGURATION =======
+// Colle ici l'URL de ton déploiement Google Apps Script (Application Web)
+const API_URL = "https://script.google.com/macros/s/AKfycby4OookMq9OPi52tFO1cTNCCgPnO4ZMoiFsDCgvT1ukO-fHE7s9NA52JN1RF1adfFwp/exec";
+// ==============================
+
+let cache = {emplacements:[], palettes:[]};
+let activeEmp = null;
+let scanner = null;
+
+function setConnDot(state){
+  document.getElementById('conn-dot').className = state;
+}
+
+async function apiGet(action, params={}){
+  const url = new URL(API_URL);
+  url.searchParams.set('action', action);
+  Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
+  const res = await fetch(url);
+  return res.json();
+}
+
+async function refreshData(){
+  try{
+    const data = await apiGet('all');
+    cache = data;
+    setConnDot('ok');
+    renderEmpList();
+    renderPaletteList();
+  }catch(e){
+    setConnDot('err');
+    console.error(e);
+  }
+}
+
+// ---------- Tabs ----------
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('view-'+tab.dataset.view).classList.add('active');
+    if(tab.dataset.view==='search') renderPaletteList();
+    if(tab.dataset.view==='emplacements') renderEmpList();
+  });
+});
+
+function showResult(elId, type, msg){
+  document.getElementById(elId).innerHTML = `<div class="result ${type}">${msg}</div>`;
+}
+
+// ---------- Scanning ----------
+function startScanner(readerId, onSuccess){
+  const el = document.getElementById(readerId);
+  el.style.display = 'block';
+  if(scanner){ scanner.stop().catch(()=>{}); scanner.clear(); scanner=null; }
+  scanner = new Html5Qrcode(readerId);
+  scanner.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: 220 },
+    (decodedText)=>{ onSuccess(decodedText); stopScanner(readerId); },
+    ()=>{}
+  ).catch(err=>{ showResult('scan-result','err','Erreur caméra : '+err); });
+}
+function stopScanner(readerId){
+  if(scanner){
+    scanner.stop().then(()=>{
+      scanner.clear();
+      document.getElementById(readerId).style.display='none';
+      scanner=null;
+    }).catch(()=>{});
+  }
+}
+
+// ---------- Step 1: emplacement ----------
+function setActiveEmp(code){
+  code = code.trim();
+  if(!code) return;
+  activeEmp = code;
+  document.getElementById('active-emp').textContent = code;
+  document.getElementById('btn-scan-palette').disabled = false;
+  document.getElementById('manual-palette').disabled = false;
+  document.getElementById('btn-set-palette-manual').disabled = false;
+  showResult('scan-result', 'ok', `Emplacement actif : ${code}. Scanne maintenant une palette.`);
+}
+document.getElementById('btn-scan-emp').addEventListener('click', ()=>{
+  startScanner('reader', (text)=> setActiveEmp(text));
+});
+document.getElementById('btn-set-emp-manual').addEventListener('click', ()=>{
+  setActiveEmp(document.getElementById('manual-emp').value);
+});
+
+// ---------- Step 2: palette ----------
+document.getElementById('btn-scan-palette').addEventListener('click', ()=>{
+  if(!activeEmp) return;
+  startScanner('reader', (text)=> assignPalette(text));
+});
+document.getElementById('btn-set-palette-manual').addEventListener('click', ()=>{
+  assignPalette(document.getElementById('manual-palette').value);
+});
+async function assignPalette(code){
+  code = code.trim();
+  if(!code || !activeEmp) return;
+
+  const existing = cache.palettes.find(p => p.code === code);
+  if(existing && existing.emplacement !== activeEmp){
+    const confirmed = confirm(
+      `⚠️ La palette "${code}" est déjà enregistrée à l'emplacement "${existing.emplacement}".\n\n` +
+      `La déplacer vers "${activeEmp}" ? (l'emplacement "${existing.emplacement}" sera automatiquement libéré)`
+    );
+    if(!confirmed){
+      showResult('scan-result','info', `Déplacement annulé. Palette toujours à "${existing.emplacement}".`);
+      return;
+    }
+  } else if(existing && existing.emplacement === activeEmp){
+    showResult('scan-result','info', `Palette déjà enregistrée à cet emplacement.`);
+    return;
+  }
+
+  showResult('scan-result','info', 'Enregistrement...');
+  try{
+    await apiGet('assignPalette', {code, emplacement: activeEmp});
+    document.getElementById('manual-palette').value='';
+    showResult('scan-result','ok', `✅ Palette <b>${code}</b> → emplacement <b>${activeEmp}</b>`);
+    refreshData();
+  }catch(e){
+    showResult('scan-result','err','Erreur d\'enregistrement, vérifie la connexion.');
+  }
+}
+
+// ---------- Search ----------
+document.getElementById('btn-search-scan').addEventListener('click', ()=>{
+  startScanner('search-reader', (text)=>{
+    document.getElementById('search-input').value = text;
+    doSearch(text);
+  });
+});
+document.getElementById('search-input').addEventListener('keyup', (e)=>{
+  if(e.key==='Enter') doSearch(e.target.value);
+});
+async function doSearch(code){
+  code = code.trim();
+  if(!code) return;
+  showResult('search-result','info','Recherche...');
+  try{
+    const p = await apiGet('search', {code});
+    if(p){
+      showResult('search-result','ok', `Palette <b>${p.code}</b><br>Emplacement : <b>${p.emplacement}</b><br>Mis à jour : ${new Date(p.updated).toLocaleString('fr-BE')}`);
+    } else {
+      showResult('search-result','err', `Palette "${code}" introuvable.`);
+    }
+  }catch(e){
+    showResult('search-result','err','Erreur réseau.');
+  }
+}
+document.getElementById('btn-refresh-palettes').addEventListener('click', refreshData);
+document.getElementById('filter-palettes').addEventListener('input', renderPaletteList);
+function renderPaletteList(){
+  const filter = (document.getElementById('filter-palettes').value||'').toLowerCase();
+  const list = cache.palettes.filter(p =>
+    p.code.toLowerCase().includes(filter) || (p.emplacement||'').toLowerCase().includes(filter)
+  ).sort((a,b)=> (b.updated||'').localeCompare(a.updated||''));
+  document.getElementById('count-palettes').textContent = cache.palettes.length;
+  document.getElementById('palette-list').innerHTML = list.map(p => `
+    <div class="list-item">
+      <div><b>${p.code}</b><div class="meta">→ ${p.emplacement}</div></div>
+      <button class="secondary" onclick="deletePalette('${p.code.replace(/'/g,"\\'")}')">✕</button>
+    </div>
+  `).join('') || '<small class="hint">Aucune palette.</small>';
+}
+async function deletePalette(code){
+  await apiGet('deletePalette', {code});
+  refreshData();
+}
+
+// ---------- Emplacements ----------
+document.getElementById('btn-add-emp').addEventListener('click', async ()=>{
+  const code = document.getElementById('new-emp-code').value.trim();
+  if(!code) return;
+  await apiGet('addEmplacement', {code});
+  document.getElementById('new-emp-code').value='';
+  refreshData();
+});
+let selectedEmps = new Set();
+
+function renderEmpList(){
+  document.getElementById('count-emps').textContent = cache.emplacements.length;
+  // garde uniquement les sélections encore valides
+  selectedEmps = new Set([...selectedEmps].filter(c => cache.emplacements.includes(c)));
+  document.getElementById('emp-list').innerHTML = cache.emplacements.map(code => `
+    <div class="list-item">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; flex:1;">
+        <input type="checkbox" class="emp-checkbox" data-code="${code}" ${selectedEmps.has(code)?'checked':''} style="width:auto; margin:0;">
+        <b>${code}</b>
+      </label>
+      <button class="secondary" onclick="deleteEmp('${code.replace(/'/g,"\\'")}')">✕</button>
+    </div>
+  `).join('') || '<small class="hint">Aucun emplacement.</small>';
+  document.querySelectorAll('.emp-checkbox').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      if(cb.checked) selectedEmps.add(cb.dataset.code);
+      else selectedEmps.delete(cb.dataset.code);
+      updateSelectedCount();
+    });
+  });
+  updateSelectedCount();
+}
+function updateSelectedCount(){
+  document.getElementById('selected-count').textContent = selectedEmps.size;
+}
+document.getElementById('btn-select-all').addEventListener('click', ()=>{
+  cache.emplacements.forEach(c=>selectedEmps.add(c));
+  renderEmpList();
+});
+document.getElementById('btn-select-none').addEventListener('click', ()=>{
+  selectedEmps.clear();
+  renderEmpList();
+});
+async function deleteEmp(code){
+  await apiGet('deleteEmplacement', {code});
+  refreshData();
+}
+
+// ---------- Bulk range creation ----------
+document.getElementById('btn-bulk-preview').addEventListener('click', async ()=>{
+  const first = document.getElementById('bulk-first').value.trim();
+  const last = document.getElementById('bulk-last').value.trim();
+  const preview = document.getElementById('bulk-preview');
+  const createBtn = document.getElementById('btn-bulk-create');
+  if(!first || !last){ preview.innerHTML=''; createBtn.style.display='none'; return; }
+  preview.innerHTML = `<div class="result info">Analyse...</div>`;
+  try{
+    const result = await apiGet('previewRange', {first, last});
+    if(!result.ok){
+      preview.innerHTML = `<div class="result err">${result.error}</div>`;
+      createBtn.style.display = 'none';
+      return;
+    }
+    const sample = result.sample.join(', ') + (result.count > 5 ? `, ... , ${result.last}` : '');
+    preview.innerHTML = `<div class="result info">${result.count} emplacements détectés :<br>${sample}</div>`;
+    createBtn.style.display = 'block';
+  }catch(e){
+    preview.innerHTML = `<div class="result err">Erreur réseau.</div>`;
+    createBtn.style.display = 'none';
+  }
+});
+document.getElementById('btn-bulk-create').addEventListener('click', async ()=>{
+  const first = document.getElementById('bulk-first').value.trim();
+  const last = document.getElementById('bulk-last').value.trim();
+  if(!first || !last) return;
+  const btn = document.getElementById('btn-bulk-create');
+  btn.disabled = true;
+  btn.textContent = 'Création en cours...';
+  try{
+    const res = await apiGet('addEmplacementsBulk', {first, last});
+    if(res.ok){
+      document.getElementById('bulk-preview').innerHTML = `<div class="result ok">✅ ${res.added} emplacements créés (sur ${res.total} dans la plage).</div>`;
+      document.getElementById('btn-bulk-create').style.display = 'none';
+      document.getElementById('bulk-first').value = '';
+      document.getElementById('bulk-last').value = '';
+      refreshData();
+    } else {
+      document.getElementById('bulk-preview').innerHTML = `<div class="result err">${res.error}</div>`;
+    }
+  }catch(e){
+    document.getElementById('bulk-preview').innerHTML = `<div class="result err">Erreur lors de la création.</div>`;
+  }finally{
+    btn.disabled = false;
+    btn.textContent = 'Créer tous les emplacements';
+  }
+});
+
+// ---------- PDF export (1 QR code par page) ----------
+function generateQrDataUrl(text, size){
+  return new Promise(resolve=>{
+    const holder = document.createElement('div');
+    holder.style.cssText = 'position:absolute; left:-9999px; top:-9999px;';
+    document.body.appendChild(holder);
+    new QRCode(holder, { text, width:size, height:size, correctLevel: QRCode.CorrectLevel.M });
+    // qrcodejs rend de façon synchrone dans la plupart des navigateurs,
+    // un micro-délai garantit que le canvas est bien peint.
+    setTimeout(()=>{
+      const canvas = holder.querySelector('canvas');
+      const dataUrl = canvas ? canvas.toDataURL('image/png') : null;
+      document.body.removeChild(holder);
+      resolve(dataUrl);
+    }, 30);
+  });
+}
+
+document.getElementById('btn-download-pdf').addEventListener('click', async ()=>{
+  const codes = [...selectedEmps];
+  if(codes.length === 0){ alert('Sélectionne au moins un emplacement.'); return; }
+  const btn = document.getElementById('btn-download-pdf');
+  btn.disabled = true;
+  const originalText = btn.textContent;
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'mm', format:'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const qrSize = 90; // mm
+
+  for(let i=0; i<codes.length; i++){
+    btn.textContent = `Génération... (${i+1}/${codes.length})`;
+    const code = codes[i];
+    const dataUrl = await generateQrDataUrl(code, 512);
+    if(i > 0) doc.addPage();
+    if(dataUrl){
+      const x = (pageW - qrSize) / 2;
+      const y = (pageH - qrSize) / 2 - 10;
+      doc.addImage(dataUrl, 'PNG', x, y, qrSize, qrSize);
+    }
+    doc.setFontSize(16);
+    doc.text(code, pageW/2, (pageH/2) + (qrSize/2) + 5, { align:'center' });
+  }
+
+  doc.save('qrcodes_emplacements.pdf');
+  btn.disabled = false;
+  btn.textContent = originalText;
+});
+
+// ---------- Export CSV ----------
+document.getElementById('btn-export').addEventListener('click', ()=>{
+  let csv = 'code_palette,emplacement,date_maj\n';
+  cache.palettes.forEach(p=>{ csv += `${p.code},${p.emplacement},${p.updated}\n`; });
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'palettes_export.csv'; a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ---------- Reset ----------
+document.getElementById('btn-reset').addEventListener('click', async ()=>{
+  if(confirm('Effacer toutes les données du Google Sheet ? Irréversible.')){
+    await apiGet('reset');
+    refreshData();
+    activeEmp = null;
+    document.getElementById('active-emp').textContent='Aucun';
+  }
+});
+
+// ---------- Init ----------
+if(API_URL.includes('COLLE_TON_URL_ICI')){
+  document.getElementById('setup-banner').style.display = 'block';
+  setConnDot('err');
+} else {
+  refreshData();
+}
+</script>
+</body>
+</html>
